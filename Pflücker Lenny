@@ -1,0 +1,217 @@
+
+-- Candy Farm Training GUI
+-- Für eine eigene Roblox-Studio-Testmap
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+local player = Players.LocalPlayer
+local running = false
+local speed = 28
+local sessionCandy = 0
+local sessionStart = os.clock()
+local elapsed = 0
+
+local gui = Instance.new("ScreenGui")
+gui.Name = "CandyFarmGUI"
+gui.ResetOnSpawn = false
+gui.Parent = player:WaitForChild("PlayerGui")
+
+local frame = Instance.new("Frame")
+frame.Size = UDim2.fromOffset(300, 310)
+frame.Position = UDim2.new(0, 20, 0.3, 0)
+frame.BackgroundColor3 = Color3.fromRGB(25, 27, 38)
+frame.Parent = gui
+
+Instance.new("UICorner", frame).CornerRadius =
+    UDim.new(0, 12)
+
+local function makeLabel(text, y, height)
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, -24, 0, height or 28)
+    label.Position = UDim2.fromOffset(12, y)
+    label.BackgroundTransparency = 1
+    label.TextColor3 = Color3.new(1, 1, 1)
+    label.Font = Enum.Font.Gotham
+    label.TextSize = 14
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Text = text
+    label.Parent = frame
+    return label
+end
+
+local title = makeLabel("CANDY FARM TRAINING", 10, 32)
+title.Font = Enum.Font.GothamBold
+title.TextSize = 18
+
+local speedLabel = makeLabel("Speed: 28 studs/s", 48)
+
+local speedDown = Instance.new("TextButton")
+speedDown.Size = UDim2.fromOffset(45, 30)
+speedDown.Position = UDim2.fromOffset(12, 78)
+speedDown.Text = "-5"
+speedDown.Parent = frame
+
+local speedUp = Instance.new("TextButton")
+speedUp.Size = UDim2.fromOffset(45, 30)
+speedUp.Position = UDim2.fromOffset(65, 78)
+speedUp.Text = "+5"
+speedUp.Parent = frame
+
+local function updateSpeed()
+    speedLabel.Text = "Speed: " .. speed .. " studs/s"
+end
+
+speedDown.MouseButton1Click:Connect(function()
+    speed = math.max(8, speed - 5)
+    updateSpeed()
+end)
+
+speedUp.MouseButton1Click:Connect(function()
+    speed = math.min(40, speed + 5)
+    updateSpeed()
+end)
+
+local candyLabel = makeLabel("Session Candy: 0", 120)
+local rateLabel = makeLabel("Candy / Stunde: 0", 150)
+local statusLabel = makeLabel("Status: Bereit", 180)
+
+local toggle = Instance.new("TextButton")
+toggle.Size = UDim2.new(1, -24, 0, 38)
+toggle.Position = UDim2.fromOffset(12, 220)
+toggle.BackgroundColor3 = Color3.fromRGB(35, 170, 95)
+toggle.TextColor3 = Color3.new(1, 1, 1)
+toggle.Font = Enum.Font.GothamBold
+toggle.TextSize = 15
+toggle.Text = "START"
+toggle.Parent = frame
+
+Instance.new("UICorner", toggle).CornerRadius =
+    UDim.new(0, 8)
+
+local reset = Instance.new("TextButton")
+reset.Size = UDim2.new(1, -24, 0, 30)
+reset.Position = UDim2.fromOffset(12, 265)
+reset.Text = "Session zurücksetzen"
+reset.Parent = frame
+
+local function getCharacter()
+    local character = player.Character
+    if not character then return end
+
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    local root = character:FindFirstChild("HumanoidRootPart")
+
+    if humanoid and root and humanoid.Health > 0 then
+        return humanoid, root
+    end
+end
+
+local function findNearestCandy(root)
+    local folder = workspace:FindFirstChild("TrainingCoins")
+    if not folder then return nil end
+
+    local nearest
+    local bestDistance = math.huge
+
+    for _, item in ipairs(folder:GetChildren()) do
+        if item:IsA("BasePart")
+            and item.Name == "Candy"
+            and item:GetAttribute("Collected") ~= true then
+
+            local distance = (item.Position - root.Position).Magnitude
+
+            if distance < bestDistance then
+                nearest = item
+                bestDistance = distance
+            end
+        end
+    end
+
+    return nearest
+end
+
+toggle.MouseButton1Click:Connect(function()
+    running = not running
+
+    if running then
+        toggle.Text = "STOP"
+        toggle.BackgroundColor3 = Color3.fromRGB(190, 55, 65)
+        statusLabel.Text = "Status: Suche Candys..."
+    else
+        toggle.Text = "START"
+        toggle.BackgroundColor3 = Color3.fromRGB(35, 170, 95)
+        statusLabel.Text = "Status: Gestoppt"
+
+        local humanoid = getCharacter()
+        if humanoid then
+            humanoid:Move(Vector3.zero)
+        end
+    end
+end)
+
+reset.MouseButton1Click:Connect(function()
+    sessionCandy = 0
+    elapsed = 0
+    sessionStart = os.clock()
+    candyLabel.Text = "Session Candy: 0"
+    rateLabel.Text = "Candy / Stunde: 0"
+end)
+
+local lastTarget = nil
+local updateTimer = 0
+
+RunService.Heartbeat:Connect(function(dt)
+    if not running then return end
+
+    elapsed = os.clock() - sessionStart
+    updateTimer += dt
+
+    if updateTimer >= 1 then
+        updateTimer = 0
+        candyLabel.Text = "Session Candy: " .. sessionCandy
+
+        local rate = elapsed > 0
+            and math.floor(sessionCandy * 3600 / elapsed)
+            or 0
+
+        rateLabel.Text = "Candy / Stunde: " .. rate
+    end
+
+    local humanoid, root = getCharacter()
+    if not root then
+        statusLabel.Text = "Status: Warte auf Respawn..."
+        return
+    end
+
+    local candy = findNearestCandy(root)
+
+    if not candy then
+        humanoid:Move(Vector3.zero)
+        statusLabel.Text = "Status: Suche neue Candys..."
+        lastTarget = nil
+        return
+    end
+
+    local offset = candy.Position - root.Position
+
+    if offset.Magnitude > 4 then
+        humanoid.WalkSpeed = speed
+        humanoid:Move(offset.Unit, false)
+        statusLabel.Text = "Status: Unterwegs zum Candy..."
+        lastTarget = candy
+    else
+        humanoid:Move(Vector3.zero)
+        statusLabel.Text = "Status: Candy erreicht"
+
+        -- Nur in dieser eigenen Trainingsmap:
+        if lastTarget == candy
+            and candy:GetAttribute("Collected") ~= true then
+
+            candy:SetAttribute("Collected", true)
+            sessionCandy += 1
+            candy:Destroy()
+            lastTarget = nil
+        end
+    end
+end)
